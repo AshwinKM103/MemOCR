@@ -17,9 +17,10 @@
 
 > [!TIP]
 > ### 🔥 News
-> - **[2025-02]** 🥳 MemOCR code and [checkpoint](https://huggingface.co/meituan/MemOCR-7B) released!
-> - **[2025-01]** 📑 MemOCR paper released on [arXiv](https://arxiv.org/abs/2601.21468) and [huggingface🤗](https://huggingface.co/papers/2601.21468)
-> - **[2025-01]** 🚀 We introduce MemOCR, a memory agent capable of forming and utilizing its memory in visual form.
+> - **[2026-04]** 🎉 MemOCR is accepted by [ICML 2026](https://icml.cc/virtual/2026/poster/60864)!
+> - **[2026-02]** 🥳 MemOCR code and [checkpoint](https://huggingface.co/meituan/MemOCR-7B) released!
+> - **[2026-01]** 📑 MemOCR paper released on [arXiv](https://arxiv.org/abs/2601.21468) and [huggingface🤗](https://huggingface.co/papers/2601.21468). Please give us an upvote on huggingface if you like this paper 🥰.
+> - **[2026-01]** 🚀 We introduce MemOCR, a memory agent capable of forming and utilizing its memory in visual form.
 
 
 ## 🌟 Overview
