@@ -11,6 +11,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Synchronous LLM generation manager for multi-turn recurrent agents.
+
+This module implements the main generation loop that drives recurrent agents.
+It orchestrates multi-turn generation by:
+1. Calling agent.action() to get prompts for the current turn
+2. Dispatching to Ray rollout workers for LLM inference
+3. Calling agent.update() to process LLM outputs
+4. Checking agent.done() to determine if generation should stop
+
+Key Classes:
+    - LLMGenerationManager: Manages the multi-turn generation loop.
+
+Key Functions:
+    - batch_subsample_images: Downsampling images in parallel for data augmentation.
+    - collate_fn: Batch collation for mixed tensor/non-tensor data.
+
+Usage Example:
+    >>> from recurrent.interface import RAgent, RConfig
+    >>> manager = LLMGenerationManager(
+    ...     tokenizer=tokenizer,
+    ...     actor_rollout_wg=ray_actors,
+    ...     config=config,
+    ...     agent_cls=MyAgent
+    ... )
+    >>> output_batch, final_mask, sample_index = manager.run_llm_loop(
+    ...     gen_batch, timing_raw
+    ... )
+"""
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -19,6 +48,8 @@ import os
 from collections import defaultdict
 from contextlib import contextmanager
 from copy import deepcopy
+from functools import lru_cache
+from typing import Any
 
 import numpy as np
 import torch
@@ -132,9 +163,25 @@ def _timer(name: str, timing_raw: dict[str, float]):
 class LLMGenerationManager:
     """Synchronous multi-turn generation loop over Ray rollout workers.
 
-    Drives `RAgent.start/action/update/done/end` (see `recurrent/interface.py`)
-    to iteratively build memory-augmented prompts and dispatch them to
-    `actor_rollout_wg.generate_sequences`.
+    Implements the main generation loop for recurrent agents. Orchestrates multi-turn
+    generation by iteratively calling agent.action() to get prompts, dispatching to
+    Ray rollout workers for LLM inference via actor_rollout_wg.generate_sequences(),
+    then calling agent.update() to process outputs.
+
+    The manager handles:
+    - Batch padding/unpadding for distributed generation
+    - Text-only and vision-language (VL) modes
+    - Image subsampling for data augmentation
+    - Timing and profiling across the generation pipeline
+    - Multiple training objectives (vanilla QA, subsampled QA, gap-fill)
+
+    Attributes:
+        config (RConfig): Agent configuration.
+        tokenizer (PreTrainedTokenizer): HuggingFace tokenizer.
+        processor (ProcessorMixin | None): Multimodal processor for VL models.
+        actor_rollout_wg: Ray actor group for distributed generation.
+        agent (RAgent): Instantiated agent for this batch.
+        chat_template (str): Chat template string for message formatting.
     """
 
     def __init__(
@@ -470,7 +517,26 @@ class LLMGenerationManager:
             )
         return model_inputs, non_tensor_batch
 
-    def run_llm_loop_vl(self, gen_batch, timing_raw):
+    def run_llm_loop_vl(
+        self,
+        gen_batch: DataProto,
+        timing_raw: dict[str, float],
+    ) -> tuple[DataProto, torch.Tensor, torch.Tensor]:
+        """Run main LLM generation loop for vision-language models.
+
+        Iteratively calls agent.action/update/done with image/text support.
+
+        Args:
+            gen_batch (DataProto): Batch with context for VL generation.
+            timing_raw (dict[str, float]): Timing dictionary to accumulate timing data.
+
+        Returns:
+            tuple[DataProto, torch.Tensor, torch.Tensor]: Tuple of
+                (output_batch, final_mask, sample_index).
+
+        Raises:
+            AssertionError: If processor is None (VL models require a processor).
+        """
         assert self.processor is not None, "Processor required for VL models."
         active_num_list = []
         gen_output_list = []
@@ -500,7 +566,34 @@ class LLMGenerationManager:
         logger.info(f"ACTIVE_TRAJ_NUM: {active_num_list}")
         return DataProto.concat(gen_output_list), final_mask, sample_index
 
-    def run_llm_loop_vl_triple_turn(self, gen_batch, timing_raw):
+    def run_llm_loop_vl_triple_turn(
+        self,
+        gen_batch: DataProto,
+        timing_raw: dict[str, float],
+    ) -> tuple[DataProto, tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor, list]:
+        """Run VL generation loop with three training objectives (triple-turn).
+
+        Implements multi-objective training for VL models:
+        1. Vanilla QA with full-resolution images
+        2. QA with subsampled images (0.25x resolution)
+        3. Gap-fill QA with full-resolution images
+
+        Returns separate masks for each objective and gap-fill answers.
+
+        Args:
+            gen_batch (DataProto): Batch with context for VL generation.
+            timing_raw (dict[str, float]): Timing dictionary to accumulate timing data.
+
+        Returns:
+            tuple: (output_batch, masks, sample_index, gap_fill_answers) where:
+                - output_batch: Concatenated outputs from all three objectives
+                - masks: Tuple of (final_mask, vanilla_qa_mask, subsampled_qa_mask, gap_fill_mask)
+                - sample_index: Tensor of sample indices
+                - gap_fill_answers: List of gap-fill answer texts
+
+        Raises:
+            AssertionError: If processor is None or shapes don't match expected counts.
+        """
         assert self.processor is not None, "Processor required for VL models."
         active_num_list = []
         gen_output_list = []

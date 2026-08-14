@@ -11,10 +11,40 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Utility functions for recurrent agent generation and tensor operations.
+
+Provides helper functions for:
+- Token/tensor manipulation (padding, position IDs, attention masks)
+- Template formatting with token IDs
+- Chat template extraction from tokenizers
+- DataProto indexing and manipulation
+- Batch padding for distributed generation
+
+Key Classes:
+    - TokenTemplate: Template formatter using token IDs instead of strings.
+
+Key Functions:
+    - chat_template: Extract chat template from tokenizer.
+    - pad_tensor_list_to_length: Pad tensor list to uniform length.
+    - create_attention_mask: Create attention mask from token IDs.
+    - create_position_ids: Create position IDs from attention mask.
+    - graceful_padding: Calculate padding indices for batch divisibility.
+    - indexing_proto: Index DataProto by boolean mask.
+
+Example:
+    >>> from recurrent.utils import TokenTemplate, chat_template
+    >>> template = TokenTemplate("Hello {name}, you have {count} items.", tokenizer)
+    >>> output = template.format(
+    ...     name=tokenizer.encode("Alice"),
+    ...     count=tokenizer.encode("5")
+    ... )
+"""
+
 from __future__ import annotations
 
 import datetime
 import re
+from typing import Any
 
 import numpy as np
 import torch
@@ -36,31 +66,36 @@ def now() -> str:
 
 
 class TokenTemplate:
-    """
-    format string, but in token_ids, use torch.LongTensor as data type.
-    Input value can also be nunpy.ndarray or list[int].
+    """Template formatter using token IDs instead of text.
 
-    usage:
-    ```
-    TEMPLATE = "Here is a problem: {problem}"
-    "Given this section: {section}"
-    "Please answer it."
+    Works like Python's string.format() but operates on token IDs instead of text.
+    Supports {keyword} placeholders that are replaced with token sequences.
+    Input values can be lists of ints, numpy arrays, or torch tensors.
 
-    processor = TokenTemplate(TEMPLATE, tokenizer)
+    This is useful for building prompts where template parts have fixed token
+    sequences but variable content is inserted as token lists.
 
-    kwarg_text = dict(
-        problem="What is the capital of France?",
-        section="Here is a introduction to France. France is a country in Western Europe. Its capital is Paris.",
-    )
-    kwargs_token_ids = {
-        k: tokenizer.encode(v, add_special_tokens=False) for k, v in kwarg_text.items()
-    }
+    Attributes:
+        template (str): Template string with {keyword} placeholders.
+        keywords (list[str]): List of keyword names in order.
+        token_sections (list[torch.Tensor]): Fixed token sequences before each keyword.
+        last_section (torch.Tensor): Fixed token sequence after last keyword.
+        initialized (bool | type): Whether initialized; stores tokenizer class if yes.
 
-    print(tokenizer.decode(processor.format(**kwargs_token_ids)))
-
-    # just as a text format string.
-    assert TEMPLATE.format(**kwarg_text) == tokenizer.decode(processor.format(**kwargs_token_ids))
-    ```
+    Example:
+        >>> TEMPLATE = "Here is a problem: {problem}. Given this section: {section}. Please answer it."
+        >>> processor = TokenTemplate(TEMPLATE, tokenizer)
+        >>> kwargs_token_ids = {
+        ...     "problem": tokenizer.encode("What is the capital of France?"),
+        ...     "section": tokenizer.encode("France is in Western Europe.")
+        ... }
+        >>> output = processor.format(**kwargs_token_ids)
+        >>> # Verify it matches the text version
+        >>> decoded = tokenizer.decode(output)
+        >>> assert decoded == TEMPLATE.format(
+        ...     problem="What is the capital of France?",
+        ...     section="France is in Western Europe."
+        ... )
     """
 
     def __init__(self, template: str, tokenizer: PreTrainedTokenizer | None = None) -> None:
@@ -117,14 +152,25 @@ class TokenTemplate:
         return total
 
     def format(self, **kwargs: Any) -> torch.Tensor:
-        """
-        Format the template with provided token ids
+        """Format the template with provided token IDs.
+
+        Replaces each {keyword} in the template with the corresponding token sequence.
+        Automatically converts input to torch.LongTensor if needed.
 
         Args:
-            **kwargs: Dictionary of keyword to token ids (as LongTensor)
+            **kwargs: Keyword arguments mapping to token sequences. Each value can be:
+                - list[int]: List of token IDs
+                - torch.Tensor: Tensor of token IDs
+                - numpy.ndarray: NumPy array of token IDs
 
         Returns:
-            Concatenated token ids as LongTensor
+            torch.Tensor: Concatenated token IDs as LongTensor.
+
+        Example:
+            >>> template = TokenTemplate("Hello {name}", tokenizer)
+            >>> output = template.format(name=[21245, 3611])  # "Hello John"
+            >>> assert isinstance(output, torch.Tensor)
+            >>> assert output.dtype == torch.long
         """
         # Initialize with first section if exists
         formatted_parts = []

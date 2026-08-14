@@ -1,4 +1,3 @@
-
 # MemOCR: Layout-Aware Visual Memory for Efficient Long-Horizon Reasoning
 
 <div align="center">
@@ -14,14 +13,14 @@
 </p>
 </div>
 
-
 > [!TIP]
+>
 > ### 🔥 News
+>
 > - **[2026-04]** 🎉 MemOCR is accepted by [ICML 2026](https://icml.cc/virtual/2026/poster/60864)!
 > - **[2026-02]** 🥳 MemOCR code and [checkpoint](https://huggingface.co/meituan/MemOCR-7B) released!
 > - **[2026-01]** 📑 MemOCR paper released on [arXiv](https://arxiv.org/abs/2601.21468) and [huggingface🤗](https://huggingface.co/papers/2601.21468). Please give us an upvote on huggingface if you like this paper 🥰.
 > - **[2026-01]** 🚀 We introduce MemOCR, a memory agent capable of forming and utilizing its memory in visual form.
-
 
 ## 🌟 Overview
 
@@ -33,10 +32,64 @@ It achieves superior performance in multi-hop question answering tasks while mai
 </div>
 
 ### Key Features
+
 - **Adaptive Information Density**: Dynamically adjusts memory content richness based on task requirements
 - **Budget-Aware Training**: Optimizes memory usage with explicit token budget constraints
 - **Dual-Domain Architecture**: Separate memory drafting (text domain) and reading (vision domain) processes
 - **State-of-the-Art Performance**: Superior results on HotpotQA, 2WikiMultihopQA, NaturalQuestions, and TriviaQA benchmarks
+
+## 📖 Documentation
+
+Complete documentation for the MemOCR recurrent agent framework is available in `docs/`:
+
+- **[Module Documentation](./docs/modules/)** - Comprehensive guides for each module:
+  - [Recurrent Agent Interface](./docs/modules/recurrent-interface.md) - Core agent classes and interfaces
+  - [Generation Manager](./docs/modules/recurrent-generation.md) - Multi-turn generation orchestration
+  - [Utilities](./docs/modules/recurrent-utils.md) - Tensor operations and helpers
+  - [Async Utilities](./docs/modules/recurrent-async-utils.md) - Async LLM client
+  - [Vision Processing](./docs/modules/vision-processing.md) - VL model integration
+  - [Markdown to Image](./docs/modules/md2img.md) - Document rendering
+
+- **[API Reference](./docs/api-reference.md)** - Complete API documentation with all classes and functions
+
+### Quick Start: Implementing a Custom Agent
+
+```python
+from recurrent.interface import RAgent, RConfig
+from transformers import PreTrainedTokenizer
+from verl import DataProto
+import torch
+
+class MyAgent(RAgent):
+    def __init__(self, tokenizer: PreTrainedTokenizer, config: RConfig):
+        self.tokenizer = tokenizer
+        self.config = config
+
+    def start(self, gen_batch: DataProto, timing_raw: dict):
+        self.step = 0
+        self.final_mask_list = []
+        self.sample_index_list = []
+
+    def action(self) -> tuple[list[torch.Tensor], dict]:
+        # Generate prompts for current turn
+        prompts = [torch.tensor(self.tokenizer.encode("Your prompt here"))]
+        sample_index = torch.arange(1)
+        self.sample_index_list.append(sample_index)
+        self.final_mask_list.append(torch.tensor([False]))
+        return prompts, {"input_pad_to": 512}
+
+    def update(self, gen_output: DataProto) -> DataProto:
+        self.step += 1
+        return gen_output
+
+    def done(self) -> bool:
+        return self.step >= 1
+
+    def end(self) -> tuple[torch.Tensor, torch.Tensor]:
+        return torch.cat(self.final_mask_list), torch.cat(self.sample_index_list)
+```
+
+See [Recurrent Agent Interface Documentation](./docs/modules/recurrent-interface.md) for complete examples.
 
 ## 🏗️ Method
 
@@ -54,8 +107,6 @@ The framework employs budget-aware training objectives to balance memory informa
 <div align="center">
 <img src="docs/figs/memocr_method_augmentation.png" width="50%" alt="Data Augmentation Strategy">
 </div>
-
-
 
 ## 📊 Results
 
@@ -80,10 +131,10 @@ MemOCR achieves state-of-the-art performance across multiple multi-hop QA benchm
 <img src="docs/figs/memocr_analysis_density.png" width="45%" style="display:inline-block">
 </div>
 
-
 ## 🛠️ Installation
 
 ### Prerequisites
+
 - Python 3.10
 - NVIDIA GPU with CUDA support (we use CUDA 12.1)
 - Compatible NVIDIA driver + CUDA runtime
@@ -109,10 +160,10 @@ wget -O flash_attn.whl https://github.com/Dao-AILab/flash-attention/releases/dow
 pip install --no-cache-dir flash_attn.whl
 ```
 
-
 ## 🖼️ Visual Memory Rendering Server
 
 MemOCR constructs two types of richtext-to-image rendering servers for training and evaluation:
+
 - **Markdown Rendering** (by default)
 - **HTML Rendering** (beta version)
 
@@ -128,7 +179,6 @@ python3 markdown_api_server.py
 
 The server will be available at `http://localhost:9000` for rendering markdown content to images.
 The interaction between the agent and the rendering server is in `recurrent/impls/call_md_renderer.py`.
-
 
 ## 🚀 Training
 
@@ -176,6 +226,7 @@ bash scripts/train.sh
 ```
 
 Training logs will be saved to:
+
 - `./log/<EXP_LOG_NAME>.log`
 - `./results/<EXP>/...`
 
@@ -200,15 +251,13 @@ Our evaluation is conducted on 8 × H800 GPUs. Reproduce the results with:
 bash scripts/eval.sh
 ```
 
-
-
 ## 📚 Citation
 
 If you find MemOCR useful in your research, please consider citing:
 
 ```bibtex
 @article{shi2026memocr,
-  title={MemOCR: Layout-Aware Visual Memory for Efficient Long-Horizon Reasoning}, 
+  title={MemOCR: Layout-Aware Visual Memory for Efficient Long-Horizon Reasoning},
   author={Yaorui Shi and Shugui Liu and Yu Yang and Wenyu Mao and Yuxin Chen and Qi GU and Hui Su and Xunliang Cai and Xiang Wang and An Zhang},
   journal={arXiv preprint arXiv:2601.21468},
   year={2026},
@@ -224,7 +273,6 @@ This project is developed by the Meituan LongCat team, building upon several exc
 - **[Playwright](https://github.com/microsoft/playwright)** for rendering richtext to visual memory;
 - **[Qwen2.5-VL](https://huggingface.co/collections/Qwen/qwen25-vl)** as the vision-language model backbone.
 
-
 ## 📄 License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
@@ -232,4 +280,5 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 ### Dataset License
 
 Our training and evaluation datasets are derived from open-source resources:
+
 - **HotpotQA, 2WikiMultihopQA, Natural Questions, TriviaQA**: These datasets are sourced from Wikipedia and other publicly available corpora. The Wikipedia-derived content is licensed under **[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)** License.

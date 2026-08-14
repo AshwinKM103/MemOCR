@@ -11,13 +11,50 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Recurrent agent interface and base classes.
+
+This module defines the core interfaces that all memory-augmented agents must implement.
+It provides the foundation for multi-turn generation where agents iteratively:
+1. Process environment feedback
+2. Update internal state
+3. Generate new prompts/actions
+4. Check termination conditions
+
+Key Classes:
+    - RConfig: Base configuration class for agents.
+    - RDataset: Dataset interface for recurrent RL training.
+    - RAgent: Synchronous agent interface for multi-turn generation.
+    - AsyncRAgent: Asynchronous agent interface for concurrent generation.
+    - AsyncOutput: Output container for async generation with timing.
+    - RRegister: Registry for loading custom agent implementations.
+
+Usage Example:
+    >>> from recurrent.interface import RAgent, RConfig
+    >>> class MyAgent(RAgent):
+    ...     def start(self, gen_batch, timing_raw):
+    ...         self.state = {}
+    ...     def action(self):
+    ...         # Generate prompts for this turn
+    ...         input_ids = []
+    ...         meta_info = {}
+    ...         return input_ids, meta_info
+    ...     def update(self, gen_output):
+    ...         # Process LLM output, update state
+    ...         return gen_output
+    ...     def done(self):
+    ...         return len(self.state) > 5
+    ...     def end(self):
+    ...         # Return masks and indices
+    ...         return final_mask, sample_index
+"""
+
 from __future__ import annotations
 
 import importlib.util
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 import numpy as np
@@ -31,27 +68,40 @@ from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 
 @dataclass
 class RConfig:
-    """
-    Configuration for Multi-turn Policy Optimization.
-    Just an interface. Add anything you need in a subclass of it.
+    """Base configuration class for recurrent agents.
+
+    This is an interface dataclass. Subclass it to add your own configuration
+    fields. All configuration should be passed through this class for consistency.
+
+    Example:
+        >>> @dataclass
+        ... class MyAgentConfig(RConfig):
+        ...     max_turns: int = 5
+        ...     temperature: float = 0.7
+        ...     top_p: float = 0.9
     """
 
     pass
 
 
 class RDataset(RLHFDataset):
-    """
-    Dataset for Multi-turn Policy Optimization.
-    This class can be used directly as a subclass of RLHFDataset for RecurrentRL
-    (if you do not need any new features)
+    """Dataset interface for recurrent RL training.
 
-    Overwritten Method:
-        - __getitem__: get a single sample
-        - get_batch_keys: tensor keys and non-tensor keys, should be contained in the batch.
-        - get_collate_fn: collate function for dataloader, default to the same as RLHFDataset.
+    Extends RLHFDataset with recurrent-specific features. Can be used directly
+    or subclassed to add custom behavior for multi-turn training.
 
-    The inherited methods are hdfs/parquet related methods.
-    Make sure to call super().__init__() in your subclass to reuse RLHFDataset's initializer.
+    This class adds:
+    - Automatic sample UUID generation for tracking samples through training
+    - Standard batch keys for recurrent agents
+    - Collation function for batching
+
+    Attributes:
+        recurrent_config (RConfig): Configuration for the recurrent pipeline.
+
+    Overridable Methods:
+        - __getitem__: Override to customize per-sample processing.
+        - get_batch_keys: Override to change batch tensor/non-tensor structure.
+        - get_collate_fn: Override to use custom collation logic.
     """
 
     def __init__(
@@ -62,12 +112,28 @@ class RDataset(RLHFDataset):
         data_config: DictConfig,
         processor: Optional[ProcessorMixin] = None,
     ):
+        """Initialize recurrent dataset.
+
+        Args:
+            recurrent_config (RConfig): Configuration object for recurrent pipeline.
+            data_files (str | list[str]): Path(s) to data files (hdfs, local, parquet).
+            tokenizer (PreTrainedTokenizer): HuggingFace tokenizer for encoding.
+            data_config (DictConfig): OmegaConf configuration for dataset behavior.
+            processor (Optional[ProcessorMixin]): Multimodal processor for VL models.
+        """
         super().__init__(data_files=data_files, tokenizer=tokenizer, config=data_config, processor=processor)
 
     def __getitem__(self, item) -> dict:
-        """
-        Enforce subclass to override this method by declaring it as an abstract method.
-        If you don't want to change its behavior, just return super().__getitem__(item).
+        """Get a single sample with UUID.
+
+        Adds a unique sample_uuid to each sample for tracking through training.
+        This is used in validation metrics to correlate samples across batches.
+
+        Args:
+            item (int): Index of the sample to retrieve.
+
+        Returns:
+            dict: Sample dictionary with all features plus sample_uuid.
         """
         row_dict = super().__getitem__(item)
         # used in validation metrics reduce
@@ -75,10 +141,22 @@ class RDataset(RLHFDataset):
         return row_dict
 
     def get_bactch_keys(self) -> tuple[list[str], list[str]]:
+        """Get batch structure specification.
+
+        Returns:
+            tuple[list[str], list[str]]: (tensor_keys, non_tensor_keys) that
+                dataloader should collate. Tensors are stacked, non-tensors
+                are stored as object arrays.
+        """
         return ["input_ids", "attention_mask", "position_ids"], []
 
     @staticmethod
     def get_collate_fn():
+        """Get collation function for dataloader.
+
+        Returns:
+            Callable: Collation function that batches samples.
+        """
         return collate_fn
 
 
@@ -352,7 +430,22 @@ class RRegister:
     """Registry for custom recurrent implementation classes.
 
     Holds references to config, dataset, and agent classes for creating
-    recurrent RL pipeline instances.
+    recurrent RL pipeline instances. Used by the training framework to
+    instantiate user-provided components.
+
+    Attributes:
+        config_cls (type[RConfig]): Configuration class for the agent.
+        dataset_cls (type[RDataset]): Dataset class for training data.
+        agent_cls (type[RAgent]): Agent class for generation logic.
+
+    Example:
+        >>> register = RRegister(
+        ...     config_cls=MyConfig,
+        ...     dataset_cls=MyDataset,
+        ...     agent_cls=MyAgent
+        ... )
+        >>> # Later, in training:
+        >>> agent = register.agent_cls(tokenizer, register.config_cls())
     """
 
     config_cls: type[RConfig]
@@ -363,18 +456,26 @@ class RRegister:
     def from_filename(cls, file_path: str, obj_name: str) -> RRegister:
         """Load register from a Python file.
 
+        Dynamically imports a Python file and extracts an RRegister object.
+        Useful for loading user-defined agent implementations from separate files.
+
         Args:
-            file_path: Path to Python file containing the register object.
-            obj_name: Name of the RRegister object in the file.
+            file_path (str): Path to Python file containing the register object.
+            obj_name (str): Name of the RRegister instance variable in the file.
 
         Returns:
-            Loaded RRegister instance.
+            RRegister: Loaded RRegister instance with config, dataset, and agent classes.
 
         Raises:
             FileNotFoundError: If file_path does not exist.
             AttributeError: If obj_name is not found in the module.
             TypeError: If obj_name is not an RRegister instance.
             RuntimeError: If module loading fails.
+
+        Example:
+            >>> # Assuming custom_agent.py defines: register = RRegister(...)
+            >>> reg = RRegister.from_filename("custom_agent.py", "register")
+            >>> agent = reg.agent_cls(tokenizer, reg.config_cls())
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Recurrent implementation file '{file_path}' not found.")

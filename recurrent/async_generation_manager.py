@@ -11,6 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Asynchronous LLM generation manager for concurrent multi-turn generation.
+
+This module provides concurrent generation for recurrent agents using asyncio.
+Unlike LLMGenerationManager which processes batches synchronously, this manager
+runs one coroutine per sample, allowing for concurrent agent.rollout() calls.
+
+Key Classes:
+    - AsyncLLMGenerationManager: Manages concurrent generation loop.
+
+Note:
+    Currently disabled (see __init__). The interface and typing are kept in sync
+    with LLMGenerationManager so re-enabling only requires removing the
+    NotImplementedError guard, not a full rewrite.
+
+Usage:
+    Currently raises NotImplementedError during initialization. Future work
+    should enable this for high-concurrency generation scenarios.
+"""
+
 import asyncio
 import logging
 
@@ -37,14 +56,25 @@ STARTING_MSG = [{"role": "user", "content": "padding"}]
 
 
 class AsyncLLMGenerationManager:
-    """Async multi-turn generation loop (per-sample coroutines) over an
-    external chat-completion scheduler. Mirrors `LLMGenerationManager` but
-    dispatches one `agent.rollout()` coroutine per sample instead of a
-    single padded batch call.
+    """Async multi-turn generation loop for concurrent sample processing.
 
-    NOTE: currently disabled (see `__init__`); the interface and typing are
-    kept in sync with `LLMGenerationManager` so re-enabling only requires
-    removing the `NotImplementedError` guard, not a rewrite.
+    Manages concurrent generation using asyncio coroutines instead of batch
+    processing. One coroutine per sample allows for concurrent LLM calls via
+    an external chat-completion scheduler.
+
+    Mirrors LLMGenerationManager but uses agent.rollout() coroutines instead
+    of synchronous batch generation. Currently disabled (see __init__).
+
+    Attributes:
+        config (RConfig): Agent configuration.
+        rollout_config (DictConfig): Generation configuration.
+        tokenizer (PreTrainedTokenizerFast): Tokenizer for encoding/decoding.
+        async_server: External async LLM server for chat completion.
+        agent_cls (type[AsyncRAgent]): Agent class for this batch.
+
+    Note:
+        This class raises NotImplementedError during initialization. The
+        interface is maintained for future async support.
     """
 
     def __init__(
@@ -55,6 +85,19 @@ class AsyncLLMGenerationManager:
         rollout_config: DictConfig,
         agent_cls: type[AsyncRAgent],
     ):
+        """Initialize async generation manager.
+
+        Args:
+            tokenizer (PreTrainedTokenizerFast): Tokenizer for encoding/decoding.
+            async_server: External async LLM server for chat completion.
+            config (RConfig): Agent configuration.
+            rollout_config (DictConfig): Generation configuration.
+            agent_cls (type[AsyncRAgent]): Agent class to instantiate.
+
+        Raises:
+            NotImplementedError: Async generation is currently not supported.
+            ValueError: If tokenizer lacks generation chat template support.
+        """
         self.config = config
         self.rollout_config = rollout_config
         set_chat_template(tokenizer)
@@ -72,11 +115,21 @@ class AsyncLLMGenerationManager:
         self.agent_cls = agent_cls
         self.agent = agent_cls(self.async_server.chat_scheduler, self.tokenizer, self.config, self.rollout_config)
 
-    def run_llm_loop(self, gen_batch: DataProto, timing_raw) -> tuple[DataProto, torch.BoolTensor, torch.LongTensor]:
-        """Run main LLM generation loop.
-        genbatch: 'context_ids','context_length','prompt_ids'
-        timing_raw: timing dict used in ray_trainer, note that we will accumulate the time cost in this loop, instead of override each time as in ray_trainer.
-        see `_timer` implementation at the top of this file for more details.
+    def run_llm_loop(
+        self, gen_batch: DataProto, timing_raw: dict[str, float]
+    ) -> tuple[DataProto, torch.BoolTensor, torch.LongTensor]:
+        """Run async LLM generation loop with concurrent sample rollout.
+
+        Launches one agent.rollout() coroutine per sample and gathers results.
+
+        Args:
+            gen_batch (DataProto): Batch with 'context_ids', 'context_length', 'prompt_ids'.
+            timing_raw (dict[str, float]): Timing dictionary to accumulate timing data.
+                Accumulates (not overrides) time cost across the generation loop.
+
+        Returns:
+            tuple[DataProto, torch.BoolTensor, torch.LongTensor]: Tuple of
+                (output_batch, final_mask, sample_index).
         """
         with _timer("mt_engine", timing_raw):
             self.async_server.wake_up()
@@ -111,6 +164,17 @@ class AsyncLLMGenerationManager:
         return gen_output, final_mask, sample_index  # pyright: ignore
 
     def concat_output(self, batch_list: list[dict]) -> DataProto:
+        """Concatenate outputs from multiple samples into a single batch.
+
+        Pads prompts and responses to uniform length and creates position IDs.
+
+        Args:
+            batch_list (list[dict]): List of output dictionaries from samples.
+
+        Returns:
+            DataProto: Concatenated batch with prompts, responses, input_ids,
+                attention_mask, position_ids, and response_mask.
+        """
         starting = self.tokenizer.apply_chat_template(STARTING_MSG, add_generation_prompt=True)
         len_starting = len(starting)
         for i in range(len_starting):
@@ -155,6 +219,19 @@ class AsyncLLMGenerationManager:
         )
 
     def tokenize_output(self, gen_output: AsyncOutput) -> dict[str, np.ndarray]:
+        """Tokenize async output conversations into prompts and responses.
+
+        Splits multi-turn conversations into prompt/response pairs and encodes
+        them using the chat template.
+
+        Args:
+            gen_output (AsyncOutput): Async output with conversations.
+
+        Returns:
+            dict[str, np.ndarray]: Dictionary with tokenized prompts, responses,
+                and response_mask (indicating assistant-generated tokens).
+        """
+
         def get_prompt_and_response(conv):
             if conv[0]["role"] == "system":
                 prompts = conv[:2]
