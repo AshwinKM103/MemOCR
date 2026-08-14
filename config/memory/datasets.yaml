@@ -1,0 +1,27 @@
+# Per-dataset overrides for memory parameters. Context length and answer
+# style differ enough across QA datasets that a single chunk_size/max_chunks
+# pair is not appropriate for all of them.
+# @package memory.datasets
+hotpotqa:
+  context_key: context
+  max_chunks: 8
+  chunk_size: 1024
+  max_final_response_length: 256
+
+2wikimultihopqa:
+  context_key: context
+  max_chunks: 10
+  chunk_size: 1024
+  max_final_response_length: 256
+
+nq:
+  context_key: context
+  max_chunks: 4
+  chunk_size: 1536
+  max_final_response_length: 128
+
+triviaqa:
+  context_key: context
+  max_chunks: 6
+  chunk_size: 1536
+  max_final_response_length: 128

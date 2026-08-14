@@ -1,0 +1,6 @@
+# Tokenizer config shared across the memory drafter and the Qwen-VL reader.
+# @package model.tokenizer
+pretrained_path: ${model.checkpoint}
+padding_side: left        # required by generation_manager.pad_tensor_list_to_length(left_pad=True)
+truncation: middle        # MemoryDataset requires center truncation, see recurrent/impls/memory.py
+add_special_tokens: false

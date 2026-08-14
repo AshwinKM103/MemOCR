@@ -1,0 +1,26 @@
+# Density ablation sweep: same dataset as baseline, sweeps memory density.
+# Usage: python scripts/memory_sweep.py -m +experiment=ablation_density
+# @package experiment
+name: ablation_density_hotpotqa
+description: "Sweep memory density (low/medium/high) on HotpotQA, all else fixed."
+dataset: hotpotqa
+data_files:
+  train: ${env.paths.cache_root}/hotpotqa/train.parquet
+  val: ${env.paths.cache_root}/hotpotqa/val.parquet
+
+# Consumed by scripts/memory_sweep.py to build the Hydra multirun override list.
+sweep:
+  param: memory/ablations
+  values: [low, medium, high]
+
+train:
+  total_epochs: 1
+  train_batch_size: 32
+  save_freq: 50
+  eval_freq: 25
+  checkpoint_dir: ${env.paths.checkpoint_root}/${experiment.name}
+
+eval:
+  datasets: [hotpotqa]
+  batch_size: 16
+  metrics: [em, f1, token_budget, info_density]

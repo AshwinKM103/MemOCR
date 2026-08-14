@@ -1,0 +1,10 @@
+# Console-only logging. Default `logging` group; no file or WandB sink.
+# @package logging
+console:
+  enabled: true
+  level: INFO
+  json: false      # human-readable in the terminal; file/wandb sinks use JSON
+file:
+  enabled: false
+wandb:
+  enabled: false

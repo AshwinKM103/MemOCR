@@ -1,0 +1,20 @@
+# Console + file + WandB logging. Use for real experiment runs.
+# @package logging
+console:
+  enabled: true
+  level: INFO
+  json: false
+file:
+  enabled: true
+  level: DEBUG
+  json: true
+  path: ${run.output_dir}/logs/${run.name}.jsonl
+  rotate_mb: 100
+  backup_count: 5
+wandb:
+  enabled: true
+  entity: ${env.wandb.entity}
+  project: ${env.wandb.project}
+  mode: ${env.wandb.mode}
+  tags: [${experiment.name}]
+  log_freq: 10        # log metrics to WandB every N steps

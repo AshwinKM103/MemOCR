@@ -1,0 +1,16 @@
+# Multi-dataset evaluation of a fixed checkpoint across all supported QA sets.
+# Usage: python scripts/memory_eval.py +experiment=multi_dataset model.checkpoint=path/to/ckpt
+# @package experiment
+name: multi_dataset_eval
+description: "Evaluate a trained checkpoint on HotpotQA, 2WikiMultihopQA, NQ, TriviaQA."
+dataset: null  # not used for training; eval.datasets drives this experiment
+
+eval:
+  datasets: [hotpotqa, 2wikimultihopqa, nq, triviaqa]
+  batch_size: 16
+  metrics: [em, f1, token_budget, info_density]
+  data_files:
+    hotpotqa: ${env.paths.cache_root}/hotpotqa/val.parquet
+    2wikimultihopqa: ${env.paths.cache_root}/2wikimultihopqa/val.parquet
+    nq: ${env.paths.cache_root}/nq/val.parquet
+    triviaqa: ${env.paths.cache_root}/triviaqa/val.parquet

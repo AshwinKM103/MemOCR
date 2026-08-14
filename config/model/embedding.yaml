@@ -1,0 +1,8 @@
+# Embedding model config for memory retrieval / similarity scoring.
+# @package model.embedding
+name: all-MiniLM-L6-v2
+model_path: ${oc.env:EMBEDDING_MODEL_PATH,/mnt/ssd/users/durgesh/models/all-MiniLM-L6-v2}
+cache_dir: ${oc.env:MEMOCR_CACHE_ROOT,/mnt/ssd/users/durgesh/memocr/cache}/embeddings
+device: cuda
+batch_size: 64
+normalize: true

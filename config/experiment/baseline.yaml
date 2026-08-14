@@ -1,0 +1,21 @@
+# Baseline experiment: single dataset (HotpotQA), default memory density.
+# Usage: python scripts/memory_train.py +experiment=baseline
+# @package experiment
+name: baseline_hotpotqa
+description: "Baseline memory-agent training/eval on HotpotQA with default density."
+dataset: hotpotqa
+data_files:
+  train: ${env.paths.cache_root}/hotpotqa/train.parquet
+  val: ${env.paths.cache_root}/hotpotqa/val.parquet
+
+train:
+  total_epochs: 3
+  train_batch_size: 32
+  save_freq: 50
+  eval_freq: 25
+  checkpoint_dir: ${env.paths.checkpoint_root}/${experiment.name}
+
+eval:
+  datasets: [hotpotqa]
+  batch_size: 16
+  metrics: [em, f1, token_budget]

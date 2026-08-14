@@ -29,18 +29,23 @@ python3 markdown_api_server.py
 ## API 端点
 
 ### 1. 根路径
+
 ```
 GET /
 ```
+
 返回 API 信息
 
 ### 2. 健康检查
+
 ```
 GET /health
 ```
+
 返回服务健康状态和浏览器池信息
 
 ### 3. Markdown 渲染
+
 ```
 POST /render
 Content-Type: application/json
@@ -54,6 +59,7 @@ Content-Type: application/json
 返回: 图片二进制数据（Content-Type: image/png 或 image/jpeg）
 
 响应头包含:
+
 - `X-Processing-Time`: 处理时间（秒）
 - `X-Image-Size`: 图片大小（字节）
 
@@ -65,8 +71,8 @@ Content-Type: application/json
 # 确保服务已启动
 python3 markdown_api_server.py
 
-# 在另一个终端运行测试
-python3 test_markdown_api.py
+# 在另一个终端运行测试（脚本已移至 benchmarks/md2img/，需手动运行，不在 CI 中执行）
+python3 ../benchmarks/md2img/test_markdown_api.py
 ```
 
 ## 配置说明
@@ -98,4 +104,3 @@ python3 test_markdown_api.py
 1. 首次启动需要下载浏览器，可能需要一些时间
 2. 浏览器实例会占用内存，根据服务器配置调整 `max_size`
 3. 建议在生产环境中使用进程管理器（如 systemd、supervisor）管理服务
-

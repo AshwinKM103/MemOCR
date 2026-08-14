@@ -1,0 +1,21 @@
+# Default memory-agent parameters, matching recurrent.impls.memory.MemoryConfig.
+# @package memory
+context_key: context
+max_prompt_length: 1024
+chunk_size: 1024          # tokens per context chunk fed to the memory drafter
+max_memorization_length: 256   # cap on drafted memory tokens per chunk
+max_chunks: 8             # max number of chunks processed before forced stop
+max_final_response_length: 512
+
+# Rendering parameters consumed by md2img / call_md_renderer / call_html_renderer.
+rendering:
+  format: markdown         # markdown | html
+  image_max_pixels: 1003520
+  image_min_pixels: 3136
+  font_family: "DejaVu Sans"
+  font_size: 16
+
+# Density controls how aggressively raw context is compressed into memory.
+# Expressed as target memory tokens per 1k context tokens; used by ablations.yaml.
+density:
+  target_tokens_per_1k_context: 64

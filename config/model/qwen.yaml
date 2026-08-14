@@ -1,0 +1,23 @@
+# Qwen-VL serving/inference config, consumed by recurrent.qwen_vl_utils and
+# the generation managers (LLMGenerationManager / AsyncLLMGenerationManager).
+# @package model
+name: qwen2.5-vl-7b-instruct
+checkpoint: ${oc.env:MEMOCR_QWEN_CHECKPOINT,/mnt/ssd/users/durgesh/models/Qwen2.5-VL-7B-Instruct}
+processor_checkpoint: ${model.checkpoint}
+
+inference:
+  temperature: 0.7
+  top_p: 0.9
+  max_tokens: 512
+  min_image_pixels: 3136
+  max_image_pixels: 1003520
+  seed: null
+
+val_kwargs:
+  temperature: 0.0
+  top_p: 1.0
+
+rollout:
+  tensor_model_parallel_size: 1
+  gpu_memory_utilization: 0.6
+  dtype: bfloat16

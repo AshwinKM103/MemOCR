@@ -1,0 +1,21 @@
+# Named memory-density variants for the `ablation_density` experiment sweep.
+# Select one at a time with: +memory/ablations=high (Hydra config group override),
+# or reference `memory.ablations.<name>` directly in a script for a manual grid.
+# @package memory.ablations
+low:
+  density:
+    target_tokens_per_1k_context: 32
+  max_memorization_length: 128
+  chunk_size: 1536
+
+medium:
+  density:
+    target_tokens_per_1k_context: 64
+  max_memorization_length: 256
+  chunk_size: 1024
+
+high:
+  density:
+    target_tokens_per_1k_context: 128
+  max_memorization_length: 512
+  chunk_size: 768

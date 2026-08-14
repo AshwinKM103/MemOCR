@@ -1,0 +1,15 @@
+# Console + structured JSON file logging. No WandB.
+# @package logging
+console:
+  enabled: true
+  level: INFO
+  json: false
+file:
+  enabled: true
+  level: DEBUG
+  json: true
+  path: ${run.output_dir}/logs/${run.name}.jsonl
+  rotate_mb: 100
+  backup_count: 5
+wandb:
+  enabled: false
