@@ -31,8 +31,8 @@ from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.experiment import ExperimentError  # noqa: E402
-from src.recipe_logging import RecipeExperimentManager  # noqa: E402
+from src.experiment import ExperimentError
+from src.recipe_logging import RecipeExperimentManager
 
 CONFIG_DIR = str(Path(__file__).resolve().parent.parent / "config")
 

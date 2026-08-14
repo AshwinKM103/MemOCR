@@ -18,14 +18,13 @@ import multiprocessing as mp
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.logging import get_logger  # noqa: E402
+from src.logging import get_logger
 
 CONFIG_DIR = str(Path(__file__).resolve().parent.parent / "config")
 TRAIN_RECIPE_SCRIPT = Path(__file__).resolve().parent / "train_recipe.py"
@@ -60,7 +59,7 @@ def run_trial(overrides: list[str], base_overrides: list[str]) -> int:
 
 
 def run_sweep(
-    trial_override_sets: list[list[str]], base_overrides: list[str], max_workers: Optional[int] = None
+    trial_override_sets: list[list[str]], base_overrides: list[str], max_workers: int | None = None
 ) -> list[int]:
     """Run all trials in parallel using a process pool."""
     max_workers = max_workers or min(len(trial_override_sets), mp.cpu_count())

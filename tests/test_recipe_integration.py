@@ -12,7 +12,11 @@ from hydra import compose, initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
 
 from scripts.sweep_recipe import build_trial_overrides
-from src.recipe_logging import RecipeExperimentManager, agent_loop_output_to_metrics, resolve_recipe_tags
+from src.recipe_logging import (
+    RecipeExperimentManager,
+    agent_loop_output_to_metrics,
+    resolve_recipe_tags,
+)
 
 CONFIG_DIR = str(Path(__file__).resolve().parent.parent / "config")
 
