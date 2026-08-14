@@ -116,21 +116,117 @@ local testing (see `config/env.yaml`, `.env.example`).
   directory. It does not manage the checkpoint files themselves — VERL's
   checkpoint handler already does that.
 
+## Hydra Config Schema
+
+MemOCR's VERL trainer config tree is rooted in `config/verl_config.yaml` and
+includes the following groups:
+
+### Root Config
+
+- `config/verl_config.yaml` — Hydra root; includes `verl`, `experiment`,
+  `logging`, `model`, `memory`, `run`, `env` groups via defaults list.
+
+### Trainer Selection
+
+- `config/verl/{sft,ppo,rl}.yaml` — Trainer-specific bridge configs
+  (`@package verl`). Sets `trainer_type`, `native_config_name`, and bridge
+  fields under `trainer` and `data` keys:
+
+```yaml
+# config/verl/sft.yaml
+trainer_type: sft
+native_config_name: sft_trainer_engine
+trainer:
+  project_name: ${logging.wandb.project}
+  experiment_name: ${run.name}
+  logger: [console, wandb]
+  default_local_dir: ${env.paths.output_root}
+  total_epochs: 3
+  save_freq: 100
+  test_freq: 100
+data:
+  train_batch_size: 4
+```
+
+### Reused Groups (from memory_train.py)
+
+- `config/experiment/{baseline,ablation,...}.yaml` — Experiment selection.
+- `config/logging/{console,wandb}.yaml` — Logger backends.
+- `config/model/{llama,mistral,...}.yaml` — Model config (passed to VERL unchanged).
+- `config/memory/{default,...}.yaml` — Memory pipeline (unused by VERL, but
+  composed for consistency with memory_train.py).
+- `config/env.yaml` — Environment paths and defaults.
+- `config/run.yaml` — Run metadata (name, version, etc.).
+
+### Example: SFT Config Expansion
+
+```bash
+python scripts/train_verl.py --cfg job --resolve verl=sft experiment=baseline
+```
+
+Results in:
+
+```yaml
+verl:
+  trainer_type: sft
+  native_config_name: sft_trainer_engine
+  trainer:
+    project_name: memocr-verl
+    experiment_name: baseline_run_001
+    logger: [console, wandb]
+    default_local_dir: /mnt/ssd/users/durgesh/memocr/outputs
+    total_epochs: 3
+    save_freq: 100
+    test_freq: 100
+  data:
+    train_batch_size: 4
+
+logging:
+  wandb:
+    enabled: true
+    project: memocr-verl
+    tags: [verl:sft]
+
+model:
+  model_name: llama-3-8b
+  # ... (from config/model/...)
+
+run:
+  name: baseline_run_001
+  version: 1.0
+
+env:
+  paths:
+    output_root: /mnt/ssd/users/durgesh/memocr/outputs
+    checkpoint_root: /mnt/ssd/users/durgesh/memocr/checkpoints
+```
+
+The bridge fields from `cfg.verl.trainer` and `cfg.verl.data` are then merged
+onto VERL's native `sft_trainer_engine.yaml` config (which owns `model`,
+`engine`, `optim`, etc.), so the trainer receives the complete config.
+
 ## Known limitations
 
-- PPO/RL `dry_run` compose currently fails in this vendored VERL checkout:
-  `verl/trainer/config/ppo_trainer.yaml` declares a `data@data: legacy_data`
-  default pointing at `verl/trainer/config/data/legacy_data.yaml`, which
-  does not exist in this checkout (pre-existing gap in the vendored VERL
-  tree, unrelated to this bridge — confirmed via `find verl/trainer/config
--iname legacy_data*` returning nothing). SFT composes and dry-runs
-  cleanly; PPO/RL will need that file restored (or `native_config_name`
-  repointed at a working PPO schema) before `verl=ppo|rl` dry-run or train
-  will succeed. `config/verl/ppo.yaml`/`rl.yaml` and the bridge logic are
-  otherwise identical to the working SFT path and exercised by
-  `tests/test_verl_integration.py::test_ppo_and_rl_bridge_to_the_same_native_schema`
-  (native-config-name equality only, since full PPO compose is currently
-  blocked by the missing file above).
-- `run_in_process_module`-style per-recipe drivers (as in
-  `scripts/train_recipe.py`) are out of scope here; VERL trainers are
-  invoked directly via their existing `run_sft`/`run_ppo` functions.
+### PPO/RL Config Composition Blockers
+
+PPO/RL `dry_run` and training currently fail in this vendored VERL checkout due
+to a missing file in VERL's native config tree:
+
+- **Issue**: `verl/trainer/config/ppo_trainer.yaml` declares a default
+  `data@data: legacy_data` pointing to `verl/trainer/config/data/legacy_data.yaml`,
+  which does not exist in this checkout.
+- **Root cause**: Pre-existing gap in the vendored VERL tree (unrelated to the
+  MemOCR bridge logic). Confirmed via `find verl/trainer/config -iname legacy_data*`.
+- **Status**: SFT composes and dry-runs cleanly. PPO/RL will need either:
+  1. The missing `legacy_data.yaml` restored to `verl/trainer/config/data/`, or
+  2. `config/verl/ppo.yaml` and `config/verl/rl.yaml` repointed at a working PPO schema.
+- **Bridge testing**: The bridge logic for PPO/RL is identical to SFT and is
+  exercised by `tests/test_verl_integration.py::test_ppo_and_rl_bridge_to_the_same_native_schema`
+  (native-config-name equality only; full PPO composition is blocked until the
+  missing file is resolved).
+
+### Out of Scope
+
+`run_in_process_module`-style per-recipe drivers (as in `scripts/train_recipe.py`)
+are not supported here; VERL trainers are invoked directly via their native
+`run_sft()` and `run_ppo()` functions.

@@ -42,8 +42,19 @@ CONFIG_NAME = "verl_config"
 
 @dataclass
 class BenchmarkResult:
-    """Summary of one benchmark run, returned for programmatic use (tests,
-    CI gates) in addition to being logged to WandB.
+    """Summary of a benchmark run for programmatic use and WandB logging.
+
+    Attributes:
+        num_steps: Number of dummy training steps executed.
+        total_seconds: Wall-clock time in seconds for all steps.
+        tokens_per_sec: Throughput in tokens per second.
+        samples_per_sec: Throughput in samples per second.
+        peak_memory_gb: Peak GPU memory used (GB). 0.0 on CPU-only runs.
+        reserved_memory_gb: Reserved GPU memory (GB). 0.0 on CPU-only runs.
+        world_size: Distributed world size (1 for single-process).
+
+    Optional attributes (set dynamically by callers):
+        flops_per_sec: FLOPs per second (if `--flops` estimate was provided).
     """
 
     num_steps: int
@@ -56,8 +67,15 @@ class BenchmarkResult:
 
 
 def _peak_and_reserved_memory_gb() -> tuple[float, float]:
-    """CUDA peak/reserved memory in GB for the current device, or (0.0, 0.0)
-    if CUDA is unavailable (CPU-only benchmark or test environment).
+    """Get CUDA peak and reserved memory for the current device.
+
+    Returns peak and reserved GPU memory in GB. On CPU-only systems or when
+    CUDA is unavailable, returns (0.0, 0.0).
+
+    Returns:
+        A tuple of (peak_memory_gb, reserved_memory_gb). Peak is the maximum
+        memory allocated across all tensors on device since the last reset.
+        Reserved is the total memory allocated by the CUDA memory allocator.
     """
     try:
         import torch
@@ -71,10 +89,19 @@ def _peak_and_reserved_memory_gb() -> tuple[float, float]:
 
 
 def run_dummy_step(batch_size: int, seq_len: int) -> None:
-    """One dummy compute-shaped step, standing in for a real
-    `engine.train_batch` call. Allocates and immediately frees a tensor
-    sized like an activation batch so peak-memory measurement is meaningful
-    even without a real model loaded.
+    """Execute one dummy compute step simulating a training iteration.
+
+    Allocates and immediately frees a tensor shaped like an activation batch
+    (batch_size, seq_len, hidden_dim) so peak-memory measurement is meaningful
+    without loading a real model. On CPU-only systems, sleeps briefly instead.
+
+    Args:
+        batch_size: Batch size for the dummy tensor.
+        seq_len: Sequence length for the dummy tensor.
+
+    Note:
+        The hidden dimension is hardcoded to 4096 to simulate a typical LLM
+        activation batch.
     """
     try:
         import torch
@@ -93,8 +120,30 @@ def run_benchmark(
     seq_len: int,
     flops_per_step: float | None = None,
 ) -> BenchmarkResult:
-    """Run `num_steps` dummy steps, measuring wall-clock throughput and
-    (if CUDA is available) peak/reserved memory.
+    """Run dummy training steps and measure throughput and memory metrics.
+
+    Executes `num_steps` dummy steps, measuring wall-clock throughput in
+    tokens/sec and samples/sec. If CUDA is available, also measures peak and
+    reserved GPU memory. Optionally estimates FLOPs/sec if `flops_per_step`
+    is provided.
+
+    Args:
+        num_steps: Number of dummy steps to execute. Must be positive.
+        batch_size: Batch size per step. Must be positive.
+        seq_len: Sequence length per step. Must be positive.
+        flops_per_step: Optional FLOPs estimate per step. If provided, the
+            result includes a `flops_per_sec` attribute.
+
+    Returns:
+        BenchmarkResult with throughput and memory metrics.
+
+    Raises:
+        ValueError: If num_steps, batch_size, or seq_len are not positive.
+
+    Example:
+        >>> result = run_benchmark(num_steps=50, batch_size=8, seq_len=2048)
+        >>> print(f"Throughput: {result.tokens_per_sec:.0f} tokens/sec")
+        >>> print(f"Memory: {result.peak_memory_gb:.1f} GB peak")
     """
     if num_steps <= 0:
         raise ValueError(f"num_steps must be positive, got {num_steps}")
@@ -136,6 +185,19 @@ def run_benchmark(
 
 @hydra.main(version_base=None, config_path=CONFIG_DIR, config_name=CONFIG_NAME)
 def main(cfg: DictConfig) -> None:
+    """Hydra entrypoint for VERL trainer benchmarking.
+
+    Composes the config, runs a benchmark with parameters from cfg.benchmark.*,
+    prints results to stdout, and logs metrics to WandB via
+    `VERLExperimentManager`.
+
+    Args:
+        cfg: Hydra OmegaConf config with `benchmark` and `verl` sections.
+
+    Example CLI usage:
+        python scripts/benchmark_verl.py verl=sft experiment=baseline \\
+            benchmark.num_steps=50 benchmark.batch_size=8 benchmark.seq_len=2048
+    """
     num_steps = int(OmegaConf.select(cfg, "benchmark.num_steps", default=20))
     batch_size = int(OmegaConf.select(cfg, "benchmark.batch_size", default=4))
     seq_len = int(OmegaConf.select(cfg, "benchmark.seq_len", default=1024))
