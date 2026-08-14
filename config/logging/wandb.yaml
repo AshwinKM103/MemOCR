@@ -16,5 +16,5 @@ wandb:
   entity: ${env.wandb.entity}
   project: ${env.wandb.project}
   mode: ${env.wandb.mode}
-  tags: [${experiment.name}]
+  tags: ["${experiment.name}"]
   log_freq: 10        # log metrics to WandB every N steps

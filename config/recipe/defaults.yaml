@@ -1,0 +1,21 @@
+# Base recipe config. Every concrete recipe (spin.yaml, langgraph_agent.yaml)
+# overrides these fields; fields left unset here must be set by the recipe.
+# @package recipe
+name: base_recipe
+description: "Base recipe config; not runnable directly."
+
+# Either `module` (imported in-process, e.g. an AgentLoopBase subclass) or
+# `launch.command` (an existing shell entrypoint, e.g. run_spin.sh) must be
+# set by a concrete recipe. train_recipe.py prefers `launch.command` when
+# both are present, since most recipes here (spin, collabllm) already have a
+# working Ray/FSDP launcher we should not re-implement.
+module: null
+
+launch:
+  command: null
+  cwd: ${hydra:runtime.cwd}
+
+# Extra WandB tags beyond the experiment name; concrete recipes append their
+# own (e.g. "spin", "fsdp"). memory_density/token_budget tags are added at
+# runtime by src/recipe_logging.py from the composed memory.* config.
+tags: []

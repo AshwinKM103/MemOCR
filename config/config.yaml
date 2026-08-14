@@ -2,17 +2,14 @@
 #
 # Composition order matters: later groups in `defaults` override earlier ones.
 # Override any leaf value on the CLI, e.g.:
-#   python scripts/memory_train.py memory.chunk_size=512 model=qwen
+#   python scripts/memory_train.py memory.chunk_size=512 model=qwen experiment=custom
 defaults:
+  - env
   - memory: default
   - model: qwen
   - experiment: baseline
   - logging: console
   - _self_
-
-# Environment settings (cache paths, GPU, NLTK data) are loaded separately
-# because they are host-specific and rarely swept.
-env_config_path: ${hydra:runtime.cwd}/config/env.yaml
 
 # Global run identity. `run_id` defaults to a Hydra-generated timestamp unless
 # overridden, so re-running the same command never silently clobbers a prior run.

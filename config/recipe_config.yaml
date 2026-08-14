@@ -1,0 +1,31 @@
+# Root Hydra config for recipe training (scripts/train_recipe.py,
+# scripts/sweep_recipe.py). Additive sibling of config/config.yaml: adds the
+# `recipe` group on top of the same memory/model/experiment/logging groups so
+# `python scripts/memory_train.py` keeps working unmodified. Select a recipe
+# with `recipe=spin` or `recipe=langgraph_agent` on the CLI.
+#
+# Usage:
+#   python scripts/train_recipe.py recipe=spin experiment=baseline
+#   python scripts/train_recipe.py recipe=langgraph_agent experiment=baseline
+defaults:
+  - env
+  - memory: default
+  - model: qwen
+  - experiment: baseline
+  - logging: wandb
+  - recipe: defaults
+  - _self_
+
+run:
+  name: ${experiment.name}_${recipe.name}
+  seed: 42
+  output_dir: ${env.paths.output_root}/${run.name}/${now:%Y%m%d_%H%M%S}
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${run.output_dir}
+  sweep:
+    dir: ${env.paths.output_root}/sweeps/${recipe.name}/${experiment.name}
+    subdir: ${hydra.job.num}

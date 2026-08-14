@@ -1,0 +1,22 @@
+# SPIN (FSDP + DataParallel PPO) recipe. Delegates the actual training run to
+# the existing `recipe/spin/run_spin.sh` launcher (Ray + FSDP dispatch is out
+# of scope for the Hydra/WandB integration layer). train_recipe.py logs the
+# resolved config, starts a WandB run for observability, then subprocess-runs
+# the launcher with MEMOCR_RUN_DIR/MEMOCR_RUN_NAME exported so the launcher's
+# own logging can be correlated with this run's WandB run and registry entry.
+# @package recipe
+name: spin_fsdp
+description: "SPIN FSDP + DataParallel PPO training (recipe/spin)."
+
+module: null
+launch:
+  command: "bash recipe/spin/run_spin.sh"
+  cwd: ${hydra:runtime.cwd}
+
+# Identifies the FSDP worker dispatched by the launcher; recorded in
+# checkpoint metadata only, never imported directly (preserves the existing
+# `Dispatch`/`register` decorator pattern in fsdp_workers.py untouched).
+fsdp:
+  worker: recipe.spin.fsdp_workers.SPINRolloutRefWorker
+
+tags: [spin, fsdp, ppo]

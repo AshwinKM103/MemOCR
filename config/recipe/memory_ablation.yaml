@@ -1,0 +1,18 @@
+# Memory density / token-budget ablation across recipes. Not selected via the
+# `recipe` config group directly -- consumed by scripts/sweep_recipe.py to
+# build the Hydra multirun override grid, mirroring how
+# config/experiment/ablation_density.yaml drives scripts/memory_sweep.py.
+# @package recipe
+name: memory_ablation
+description: "Sweep memory density (config/memory/ablations.yaml) and token budget across recipes."
+
+module: null
+launch:
+  command: null
+  cwd: ${hydra:runtime.cwd}
+
+sweep:
+  recipe: [spin, langgraph_agent]
+  memory_ablation: [low, medium, high]  # config/memory/ablations.yaml keys
+
+tags: [ablation, memory_density, token_budget]

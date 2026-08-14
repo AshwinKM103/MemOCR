@@ -1,0 +1,14 @@
+# LangGraph agent-loop recipe (ReactAgentLoop and friends). Runs in-process
+# via the AgentLoopBase subclass named in `module`, so train_recipe.py can
+# inject the WandB-backed logger directly into the loop instead of shelling
+# out (unlike spin.yaml, which delegates to an external Ray/FSDP launcher).
+# @package recipe
+name: langgraph_agent
+description: "LangGraph ReactAgentLoop agent-loop training (recipe/langgraph_agent)."
+
+module: recipe.langgraph_agent.react_agent_loop
+launch:
+  command: null
+  cwd: ${hydra:runtime.cwd}
+
+tags: [agent, langgraph, react_agent_loop]
