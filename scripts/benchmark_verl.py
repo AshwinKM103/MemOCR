@@ -23,14 +23,18 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.verl_logging import VERLExperimentManager, estimate_flops_per_second, get_world_size, is_rank_zero
+from src.verl_logging import (
+    VERLExperimentManager,
+    estimate_flops_per_second,
+    get_world_size,
+    is_rank_zero,
+)
 
 CONFIG_DIR = str(Path(__file__).resolve().parent.parent / "config")
 CONFIG_NAME = "verl_config"
@@ -87,7 +91,7 @@ def run_benchmark(
     num_steps: int,
     batch_size: int,
     seq_len: int,
-    flops_per_step: Optional[float] = None,
+    flops_per_step: float | None = None,
 ) -> BenchmarkResult:
     """Run `num_steps` dummy steps, measuring wall-clock throughput and
     (if CUDA is available) peak/reserved memory.

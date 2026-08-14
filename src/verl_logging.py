@@ -35,7 +35,6 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Optional
 
 from omegaconf import DictConfig, OmegaConf, open_dict
 
@@ -170,10 +169,10 @@ class VERLExperimentManager(ExperimentManager):
         self,
         step: int,
         metrics: dict[str, float],
-        tokens_per_sec: Optional[float] = None,
-        samples_per_sec: Optional[float] = None,
-        peak_memory_gb: Optional[float] = None,
-        reserved_memory_gb: Optional[float] = None,
+        tokens_per_sec: float | None = None,
+        samples_per_sec: float | None = None,
+        peak_memory_gb: float | None = None,
+        reserved_memory_gb: float | None = None,
     ) -> None:
         """Log a training step's task metrics plus optional performance
         metrics, gated to rank 0.
@@ -212,9 +211,9 @@ class VERLExperimentManager(ExperimentManager):
         self,
         step: int,
         checkpoint_dir: Path | str,
-        world_size: Optional[int] = None,
-        sharding_strategy: Optional[str] = None,
-        metrics: Optional[dict[str, float]] = None,
+        world_size: int | None = None,
+        sharding_strategy: str | None = None,
+        metrics: dict[str, float] | None = None,
     ) -> Path:
         """Write a `verl_metadata.json` sidecar next to a VERL-managed
         checkpoint directory, recording distributed-training context that

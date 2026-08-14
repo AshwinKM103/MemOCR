@@ -28,8 +28,10 @@ Usage:
 
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
+from typing import Callable
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -164,10 +166,8 @@ def main(cfg: DictConfig) -> None:
         exp.log_config()
 
     try:
-        import importlib
-
         module = importlib.import_module(module_name)
-        entrypoint = getattr(module, entrypoint_name)
+        entrypoint: Callable[[DictConfig], None] = getattr(module, entrypoint_name)
         entrypoint(native_cfg)
     except Exception:
         if is_rank_zero():
