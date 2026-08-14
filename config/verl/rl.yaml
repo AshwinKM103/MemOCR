@@ -1,0 +1,23 @@
+# Generic RL trainer bridge config. VERL (this vendored version) does not
+# ship a separate `rl_trainer.py` distinct from PPO — `RayPPOTrainer`
+# (verl/trainer/ppo/ray_trainer.py, launched via verl/trainer/main_ppo.py)
+# is the RL trainer, parameterized by `config.algorithm.*` for the specific
+# RL variant (PPO, GRPO, etc. — see verl/trainer/config/algorithm.py). This
+# file is kept distinct from ppo.yaml only so `verl=rl` reads clearly in a
+# non-PPO-algorithm run; both resolve to the same native config and the same
+# `run_ppo` entrypoint in scripts/train_verl.py.
+# @package verl
+trainer_type: rl
+native_config_name: ppo_trainer
+
+trainer:
+  project_name: ${logging.wandb.project}
+  experiment_name: ${run.name}
+  logger: ["console", "wandb"]
+  default_local_dir: ${run.output_dir}/checkpoints
+  total_epochs: ${experiment.train.total_epochs}
+  save_freq: ${experiment.train.save_freq}
+  test_freq: ${experiment.train.eval_freq}
+
+data:
+  train_batch_size: ${experiment.train.train_batch_size}

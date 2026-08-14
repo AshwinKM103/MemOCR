@@ -1,0 +1,42 @@
+# Root Hydra config for VERL trainer runs (scripts/train_verl.py).
+#
+# This group is deliberately separate from config/config.yaml (memory_train.py)
+# and config/recipe_config.yaml (train_recipe.py): VERL trainers own their own
+# native OmegaConf schema (verl/trainer/config/*.yaml), so this file composes
+# only the fields that need to be *bridged* into that schema, plus the Phase
+# 1/2 experiment/logging/memory/model groups reused unchanged.
+#
+# Usage:
+#   python scripts/train_verl.py verl=sft +experiment=baseline
+#   python scripts/train_verl.py verl=ppo +experiment=baseline
+defaults:
+  - env
+  - memory: default
+  - model: qwen
+  - experiment: baseline
+  - logging: wandb
+  - verl: sft
+  - _self_
+
+run:
+  name: ${experiment.name}
+  seed: 42
+  output_dir: ${env.paths.output_root}/${run.name}/${now:%Y%m%d_%H%M%S}
+
+# Validate config and print to stdout without launching training.
+dry_run: false
+
+# Consumed only by scripts/benchmark_verl.py.
+benchmark:
+  num_steps: 20
+  batch_size: 4
+  seq_len: 1024
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: ${run.output_dir}
+  sweep:
+    dir: ${env.paths.output_root}/sweeps/${experiment.name}
+    subdir: ${hydra.job.num}

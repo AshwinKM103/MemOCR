@@ -1,0 +1,25 @@
+# SFT trainer bridge config. Maps Phase 1 Hydra groups onto the fields
+# `verl.trainer.sft_trainer.run_sft` reads from `config.trainer.*`. Merged
+# on top of VERL's native `verl/trainer/config/sft_trainer_engine.yaml`
+# (loaded separately in scripts/train_verl.py) — this file only carries the
+# *overrides*, never a full copy of VERL's schema, so upstream schema
+# changes in VERL do not silently go stale here.
+# @package verl
+trainer_type: sft
+native_config_name: sft_trainer_engine
+
+# Fields copied onto native `config.trainer.*` by scripts/train_verl.py.
+# `logger` is VERL's own `Tracking` backend list (verl/utils/tracking.py);
+# "wandb" is a name VERL's Tracking already understands, so no VERL code
+# changes are required to get WandB output from this bridge.
+trainer:
+  project_name: ${logging.wandb.project}
+  experiment_name: ${run.name}
+  logger: ["console", "wandb"]
+  default_local_dir: ${run.output_dir}/checkpoints
+  total_epochs: ${experiment.train.total_epochs}
+  save_freq: ${experiment.train.save_freq}
+  test_freq: ${experiment.train.eval_freq}
+
+data:
+  train_batch_size: ${experiment.train.train_batch_size}

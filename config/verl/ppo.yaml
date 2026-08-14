@@ -1,0 +1,18 @@
+# PPO trainer bridge config. Merged on top of VERL's native
+# `verl/trainer/config/ppo_trainer.yaml` (loaded in scripts/train_verl.py).
+# See config/verl/sft.yaml for the merge-order rationale.
+# @package verl
+trainer_type: ppo
+native_config_name: ppo_trainer
+
+trainer:
+  project_name: ${logging.wandb.project}
+  experiment_name: ${run.name}
+  logger: ["console", "wandb"]
+  default_local_dir: ${run.output_dir}/checkpoints
+  total_epochs: ${experiment.train.total_epochs}
+  save_freq: ${experiment.train.save_freq}
+  test_freq: ${experiment.train.eval_freq}
+
+data:
+  train_batch_size: ${experiment.train.train_batch_size}
