@@ -76,6 +76,162 @@ Not selected as a recipe to _train_ -- it defines the sweep grid consumed by
 `config/memory/ablations.yaml` variant: `low` / `medium` / `high`). Each grid
 point is one `train_recipe.py` subprocess.
 
+## Hydra Config Schema Reference
+
+The recipe infrastructure is built on Hydra's composition system. This section documents all config groups, their structure, and how they compose.
+
+### Root Config: `config/recipe_config.yaml`
+
+The primary entrypoint for recipe training. Composes defaults from multiple groups:
+
+```yaml
+defaults:
+  - recipe: defaults # Override: recipe=<name>
+  - memory: base # Override: memory=<name>
+  - model: defaults # Override: model=<name>
+  - experiment: defaults # Override: experiment=<name>
+  - logging: defaults # Override: logging=<name>
+  - run: defaults # No CLI override needed
+```
+
+### Config Groups
+
+#### `config/recipe/` — Recipe Selection
+
+| File                   | Purpose                                      | Key Fields                                            |
+| ---------------------- | -------------------------------------------- | ----------------------------------------------------- |
+| `defaults.yaml`        | Schema base (read for field descriptions)    | `name`, `description`, `module`, `launch`, `tags`     |
+| `spin.yaml`            | SPIN trainer with Ray/FSDP dispatch          | `launch.command: bash recipe/spin/run_spin.sh`        |
+| `langgraph_agent.yaml` | LangGraph ReactAgentLoop (in-process)        | `module: recipe.langgraph_agent.react_agent_loop`     |
+| `memory_ablation.yaml` | Sweep configuration (not a trainable recipe) | `sweep.recipe: [...]`, `sweep.memory_ablation: [...]` |
+
+**Example: Train SPIN**
+
+```bash
+python scripts/train_recipe.py recipe=spin experiment=baseline
+```
+
+**Example: Train LangGraph Agent**
+
+```bash
+python scripts/train_recipe.py recipe=langgraph_agent experiment=baseline
+```
+
+**Example: Run ablation sweep**
+
+```bash
+python scripts/sweep_recipe.py recipe=memory_ablation experiment=ablation_density
+```
+
+#### `config/memory/` — Memory System Config
+
+Shared with `config/config.yaml` (pre-recipe entrypoint). Two usage patterns:
+
+1. **Direct selection** (applied to single training run):
+
+   ```bash
+   python scripts/train_recipe.py recipe=spin memory=<name>
+   ```
+
+2. **Ablation selection** (applied per trial in sweep):
+   ```bash
+   python scripts/train_recipe.py recipe=spin +memory/ablations=<variant>
+   ```
+
+**Memory files:**
+
+| File                    | Purpose                                    |
+| ----------------------- | ------------------------------------------ |
+| `ablations/low.yaml`    | Low-density variant (for ablation studies) |
+| `ablations/medium.yaml` | Medium-density variant                     |
+| `ablations/high.yaml`   | High-density variant                       |
+| `base.yaml`             | Default memory config                      |
+
+**Key fields in memory config:**
+
+- `memory.density.target_tokens_per_1k_context`: Encoding density (affects memory size)
+- `memory.max_memorization_length`: Max tokens to encode (affects compute time)
+- `memory.type`: Memory backend (e.g., `faiss_flat`, `sqlite`)
+
+#### `config/experiment/` — Experiment Metadata
+
+Labels and hyperparameters for the run. Shared with pre-recipe training.
+
+| File                    | Purpose                                    |
+| ----------------------- | ------------------------------------------ |
+| `baseline.yaml`         | Baseline hyperparams (no memory ablations) |
+| `ablation_density.yaml` | Hyperparams for memory-density sweeps      |
+
+**Key fields:**
+
+- `experiment.name`: Used in WandB tags and run naming
+- `experiment.description`: Human-readable summary
+
+#### `config/model/`, `config/logging/`, `config/run/`
+
+Shared with pre-recipe training. See `docs/config-guide.md` for details.
+
+### Field Reference: `recipe.*`
+
+Every recipe config inherits from `config/recipe/defaults.yaml`:
+
+| Field                          | Type      | Required | Meaning                                                                                                                                          |
+| ------------------------------ | --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `recipe.name`                  | str       | Yes      | Unique recipe identifier (e.g., `spin_fsdp`). Folded into `run.name` and WandB tags.                                                             |
+| `recipe.description`           | str       | No       | Human-readable summary. Logged in config snapshots.                                                                                              |
+| `recipe.module`                | str       | No*      | Dotted Python path to an in-process entrypoint (e.g., `recipe.langgraph_agent.react_agent_loop`). Used for AgentLoopBase subclasses.             |
+| `recipe.launch.command`        | str       | No*      | Shell command to execute (e.g., `bash recipe/spin/run_spin.sh`). Subprocess is run with MEMOCR_RUN_DIR, MEMOCR_RUN_NAME, MEMOCR_RECIPE env vars. |
+| `recipe.launch.cwd`            | str       | No       | Working directory for launch.command (default: `.`, the repo root).                                                                              |
+| `recipe.tags`                  | list[str] | No       | Extra WandB tags (e.g., `[spin, fsdp]`). Merged into run tags by RecipeExperimentManager.                                                        |
+| `recipe.sweep.recipe`          | list[str] | No       | List of recipe names to sweep over (e.g., `[spin, langgraph_agent]`). Only used in memory_ablation.yaml.                                         |
+| `recipe.sweep.memory_ablation` | list[str] | No       | List of memory ablation variants (e.g., `[low, medium, high]`). Only used in memory_ablation.yaml.                                               |
+
+*Note: `scripts/train_recipe.py` requires exactly one of `recipe.module` or `recipe.launch.command` to be set. If both are set, launch.command takes precedence. If neither is set, validation fails.
+
+### Tag Format and Filtering
+
+WandB tags are computed by `resolve_recipe_tags()` in `src/recipe_logging.py` from:
+
+1. `experiment.name` (if set)
+2. `recipe:{recipe.name}` (automatically added)
+3. Each tag in `recipe.tags` (e.g., `spin`, `fsdp`)
+4. `memory_density:{value}` (if `memory.density.target_tokens_per_1k_context` is set)
+5. `token_budget:{value}` (if `memory.max_memorization_length` is set)
+
+**Example tags for a run:**
+
+```
+baseline_hotpotqa
+recipe:spin_fsdp
+spin
+fsdp
+memory_density:64
+token_budget:256
+```
+
+These tags are merged into WandB at `start_run()`, making runs filterable in the UI without manual dashboard setup.
+
+### CLI Override Syntax
+
+Hydra CLI syntax varies depending on whether the config key is already in the `defaults:` list:
+
+- **Keys in defaults** (e.g., `recipe`, `memory`, `experiment`): Use `key=value`
+
+  ```bash
+  python scripts/train_recipe.py recipe=spin experiment=baseline
+  ```
+
+- **Keys not in defaults** (e.g., `memory/ablations`, which is inside `memory`): Use `+key=value`
+
+  ```bash
+  python scripts/train_recipe.py recipe=spin +memory/ablations=high
+  ```
+
+- **Print resolved config without running**: Add `--cfg job --resolve`
+  ```bash
+  python scripts/train_recipe.py recipe=spin experiment=baseline --cfg job --resolve
+  ```
+
 ## WandB tags and metrics
 
 `src.recipe_logging.RecipeExperimentManager` (a drop-in `ExperimentManager`
