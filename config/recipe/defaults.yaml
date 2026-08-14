@@ -19,3 +19,6 @@ launch:
 # own (e.g. "spin", "fsdp"). memory_density/token_budget tags are added at
 # runtime by src/recipe_logging.py from the composed memory.* config.
 tags: []
+
+# Validate config and print to stdout without launching training
+dry_run: false

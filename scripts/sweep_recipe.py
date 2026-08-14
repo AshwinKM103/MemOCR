@@ -175,9 +175,10 @@ def main(cfg: DictConfig) -> None:
     Flow:
     1. Load the sweep configuration (recipe.sweep.recipe and
        recipe.sweep.memory_ablation lists)
-    2. Expand the cartesian product into trial-specific Hydra overrides
-    3. Run all trials in parallel subprocesses (pool size = min(num_trials, cpu_count))
-    4. Aggregate results and exit with code 0 (all pass) or 1 (any failure)
+    2. If dry_run=true, print the sweep grid and exit
+    3. Expand the cartesian product into trial-specific Hydra overrides
+    4. Run all trials in parallel subprocesses (pool size = min(num_trials, cpu_count))
+    5. Aggregate results and exit with code 0 (all pass) or 1 (any failure)
 
     Each trial is isolated in its own subprocess to avoid global state
     clashes (Hydra singleton, OmegaConf caches, etc.).
@@ -191,6 +192,7 @@ def main(cfg: DictConfig) -> None:
         ```bash
         # Run a 2x3 grid: [spin, langgraph_agent] x [low, medium, high]
         python scripts/sweep_recipe.py recipe=memory_ablation experiment=ablation_density
+        python scripts/sweep_recipe.py recipe=memory_ablation dry_run=true
         ```
 
     Raises:
@@ -198,6 +200,15 @@ def main(cfg: DictConfig) -> None:
         ValueError: If recipe.sweep is not configured.
     """
     trial_override_sets = build_trial_overrides(cfg)
+    if cfg.recipe.dry_run:
+        print(f"=== Sweep Grid ({len(trial_override_sets)} trials) ===")
+        for i, overrides in enumerate(trial_override_sets, 1):
+            print(f"Trial {i}: {' '.join(overrides)}")
+        print("\n=== Example resolved config (first trial) ===")
+        first_trial = trial_override_sets[0]
+        print(f"Overrides: {first_trial}")
+        print("(Run without dry_run=true to execute)")
+        return
     experiment_name = OmegaConf.select(cfg, "experiment.name", default="sweep")
     base_overrides = [f"+experiment={experiment_name}"]
 

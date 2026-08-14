@@ -166,12 +166,13 @@ def main(cfg: DictConfig) -> None:
     Orchestrates end-to-end training for a recipe (SPIN, LangGraph agent, etc.)
     using a Hydra-composed config. Flow:
     1. Validate that the config has a valid recipe selected
-    2. Create a RecipeExperimentManager (WandB + file logging with recipe tags)
-    3. Start a run and log the full config
-    4. Execute the recipe via either:
+    2. If dry_run=true, print the resolved config and exit
+    3. Create a RecipeExperimentManager (WandB + file logging with recipe tags)
+    4. Start a run and log the full config
+    5. Execute the recipe via either:
        - An external launcher (recipe.launch.command, e.g., SPIN's run_spin.sh)
        - An in-process module (recipe.module, currently raises NotImplementedError)
-    5. Mark the run as completed or failed based on exit code
+    6. Mark the run as completed or failed based on exit code
 
     Catches all exceptions during training, marks the run as failed, and
     re-raises the exception for proper exit code handling.
@@ -187,6 +188,7 @@ def main(cfg: DictConfig) -> None:
         python scripts/train_recipe.py recipe=spin experiment=baseline
         python scripts/train_recipe.py recipe=langgraph_agent experiment=baseline \\
             +memory/ablations=high
+        python scripts/train_recipe.py recipe=spin dry_run=true
         ```
 
     Raises:
@@ -196,6 +198,10 @@ def main(cfg: DictConfig) -> None:
             and re-raised.
     """
     validate_recipe_config(cfg)
+    if cfg.recipe.dry_run:
+        print("=== Resolved Config ===")
+        print(OmegaConf.to_yaml(cfg))
+        return
     exp = RecipeExperimentManager(config=cfg)
     exp.start_run(name=cfg.run.name)
     exp.log_config()
