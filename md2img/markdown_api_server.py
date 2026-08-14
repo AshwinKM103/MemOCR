@@ -1,52 +1,55 @@
-"""
-Markdown 转图片 HTTP API 服务
-支持高 QPS 请求，使用浏览器实例池进行性能优化
+"""Markdown to image HTTP API server.
+
+Supports high QPS requests with browser instance pooling for performance.
 """
 
-import markdown
+import asyncio
 import io
-import queue
+import logging
+import random
 import threading
 import time
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Optional
-from PIL import Image, ImageChops
-from playwright.sync_api import sync_playwright, Browser, Page
+
+import markdown
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
+from PIL import Image, ImageChops
+from playwright.sync_api import Browser, Page, sync_playwright
 from pydantic import BaseModel
-import uvicorn
-import random
-# 线程本地存储，为每个线程维护独立的浏览器实例
+
+# Thread-local storage for browser instances per thread
 _thread_local = threading.local()
-import logging
 
 logger = logging.getLogger(__name__)
 
 
 class MarkdownRequest(BaseModel):
-    """Markdown 请求模型"""
+    """Markdown to image conversion request.
+
+    Attributes:
+        content: Markdown content to convert.
+        format: Output image format (png, jpeg). Defaults to png.
+    """
 
     content: str
-    format: Optional[str] = "png"  # 支持 png, jpeg
+    format: Optional[str] = "png"
 
 
 def get_thread_local_browser() -> Browser:
+    """Get thread-local browser instance.
+
+    Creates one Playwright browser per thread for thread safety.
+
+    Returns:
+        Playwright Browser instance for current thread.
     """
-    获取当前线程的浏览器实例（使用线程本地存储）
-    每个线程都有自己的 Playwright 上下文和浏览器实例
-    """
-    if (
-        not hasattr(_thread_local, "playwright_instance")
-        or _thread_local.playwright_instance is None
-    ):
-        # 为当前线程初始化 Playwright
+    if not hasattr(_thread_local, "playwright_instance") or _thread_local.playwright_instance is None:
         _thread_local.playwright_context_manager = sync_playwright()
-        _thread_local.playwright_instance = (
-            _thread_local.playwright_context_manager.__enter__()
-        )
+        _thread_local.playwright_instance = _thread_local.playwright_context_manager.__enter__()
         _thread_local.browser = _thread_local.playwright_instance.chromium.launch(
             headless=True,
             args=[
@@ -59,33 +62,34 @@ def get_thread_local_browser() -> Browser:
     return _thread_local.browser
 
 
-def cleanup_thread_local_browser():
-    """清理当前线程的浏览器实例"""
+def cleanup_thread_local_browser() -> None:
+    """Clean up thread-local browser instance."""
     if hasattr(_thread_local, "browser") and _thread_local.browser:
         try:
             _thread_local.browser.close()
-        except:
+        except Exception:
             pass
         _thread_local.browser = None
 
-    if (
-        hasattr(_thread_local, "playwright_context_manager")
-        and _thread_local.playwright_context_manager
-    ):
+    if hasattr(_thread_local, "playwright_context_manager") and _thread_local.playwright_context_manager:
         try:
             _thread_local.playwright_context_manager.__exit__(None, None, None)
-        except:
+        except Exception:
             pass
         _thread_local.playwright_context_manager = None
         _thread_local.playwright_instance = None
 
 
-# 全局执行器
+# Global executor for thread pool
 executor: Optional[ThreadPoolExecutor] = None
 
 
 def get_executor() -> ThreadPoolExecutor:
-    """获取线程池执行器（单例模式）"""
+    """Get thread pool executor (singleton).
+
+    Returns:
+        Shared ThreadPoolExecutor for markdown-to-image conversion.
+    """
     global executor
     if executor is None:
         executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="playwright")
@@ -93,14 +97,13 @@ def get_executor() -> ThreadPoolExecutor:
 
 
 def trim_whitespace(im: Image.Image) -> Image.Image:
-    """
-    自动裁剪图片，移除背景色边框
+    """Auto-crop image to remove background border.
 
     Args:
-        im: PIL Image 对象
+        im: PIL Image to crop.
 
     Returns:
-        裁剪后的 PIL Image 对象
+        Cropped PIL Image.
     """
     if im.mode == "RGBA":
         bg_color = (255, 255, 255, 0)
@@ -131,19 +134,18 @@ def trim_whitespace(im: Image.Image) -> Image.Image:
 
 
 def _markdown_to_image_sync(markdown_text: str, image_format: str = "png") -> bytes:
-    """
-    将 Markdown 文本转换为图片
+    """Convert Markdown text to image bytes.
 
     Args:
-        markdown_text: Markdown 文本内容
-        image_format: 图片格式 (png 或 jpeg)
+        markdown_text: Markdown content to convert.
+        image_format: Output format (png or jpeg). Defaults to png.
 
     Returns:
-        图片的字节数据
+        Image bytes in the specified format.
     """
     start_time = time.time()
 
-    # 清理和转换 Markdown
+    # Clean and convert Markdown to HTML
     markdown_text = markdown_text.strip().strip("`")
     html_content = markdown.markdown(markdown_text, extensions=["extra"])
 
@@ -218,13 +220,9 @@ def _markdown_to_image_sync(markdown_text: str, image_format: str = "png") -> by
                 "width": box["width"],
                 "height": box["height"],
             }
-            screenshot_bytes = page.screenshot(
-                clip=clip_area, omit_background=True, type=image_format
-            )
+            screenshot_bytes = page.screenshot(clip=clip_area, omit_background=True, type=image_format)
         else:
-            screenshot_bytes = page.screenshot(
-                full_page=True, omit_background=True, type=image_format
-            )
+            screenshot_bytes = page.screenshot(full_page=True, omit_background=True, type=image_format)
 
         # 转换为 PIL Image 并裁剪
         # pil_image = Image.open(io.BytesIO(screenshot_bytes))
@@ -261,9 +259,7 @@ async def markdown_to_image(markdown_text: str, image_format: str = "png") -> by
     # 使用线程池执行同步操作，避免跨线程问题
     loop = asyncio.get_event_loop()
     executor = get_executor()
-    return await loop.run_in_executor(
-        executor, _markdown_to_image_sync, markdown_text, image_format
-    )
+    return await loop.run_in_executor(executor, _markdown_to_image_sync, markdown_text, image_format)
 
 
 @asynccontextmanager
@@ -324,9 +320,7 @@ async def render_markdown(request: MarkdownRequest):
         raise HTTPException(status_code=400, detail="Markdown 内容不能为空")
 
     if request.format not in ["png", "jpeg"]:
-        raise HTTPException(
-            status_code=400, detail="不支持的图片格式，仅支持 png 和 jpeg"
-        )
+        raise HTTPException(status_code=400, detail="不支持的图片格式，仅支持 png 和 jpeg")
 
     try:
         start_time = time.time()
@@ -347,7 +341,6 @@ async def render_markdown(request: MarkdownRequest):
     except Exception as e:
         logger.error(f"[Render Error] 渲染错误: {str(e)}")
         raise HTTPException(status_code=500, detail=f"渲染失败: {str(e)}")
-
 
 
 if __name__ == "__main__":
